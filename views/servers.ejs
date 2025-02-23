@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IRC Style Chat - Sunucu Seçimi</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="server-container">
+        <div class="server-form">
+            <h1>Roomia!</h1>
+            <h2>Sunucu Oluştur veya Katıl</h2>
+            <div class="input-group">
+                <input type="text" id="serverName" placeholder="Sunucu adı girin">
+                <button onclick="joinServer()">Sunucuya Katıl</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function joinServer() {
+            const serverName = document.getElementById('serverName').value.trim();
+            if (serverName) {
+                const sanitizedServerName = serverName.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+                window.location.href = `/chat/${sanitizedServerName}`;
+            } else {
+                alert('Lütfen geçerli bir sunucu adı girin!');
+            }
+        }
+
+        document.getElementById('serverName').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                joinServer();
+            }
+        });
+    </script>
+</body>
+</html>

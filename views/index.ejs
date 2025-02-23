@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Roomia! - <%= serverName %></title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div class="server-header">
+        <h2><%= serverName %></h2>
+        <a href="/" class="change-server-btn">Sunucu Değiştir</a>
+    </div>
+    <div class="channel-bar">
+        <div class="channel-list" id="channelList">
+            <!-- Kanallar buraya dinamik olarak eklenecek -->
+        </div>
+        <button class="add-channel-btn" onclick="showNewChannelDialog()">+</button>
+    </div>
+    <div class="chat-container">
+        <div class="chat-main">
+            <div class="current-channel" id="currentChannel">general</div>
+            <div class="messages" id="messages"></div>
+            <div class="input-area">
+                <input type="text" id="username" placeholder="Kullanıcı adı">
+                <input type="text" id="m" placeholder="Mesajınızı yazın...">
+                <button onclick="sendMessage()">Gönder</button>
+            </div>
+        </div>
+        <div class="users-panel">
+            <h3>Aktif Kullanıcılar</h3>
+            <ul id="users"></ul>
+        </div>
+    </div>
+
+    <div id="newChannelDialog" class="modal">
+        <div class="modal-content">
+            <h3>Yeni Kanal Oluştur</h3>
+            <input type="text" id="newChannelName" placeholder="Kanal adı">
+            <div class="modal-buttons">
+                <button onclick="createChannel()">Oluştur</button>
+                <button onclick="hideNewChannelDialog()">İptal</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentUsername = '';
+        const serverName = '<%= serverName %>';
+        let currentChannel = 'general';
+        let unreadChannels = new Set();
+
+        socket.emit('join server', serverName);
+
+        function createChannelElement(channelName) {
+            const div = document.createElement('div');
+            div.className = 'channel-item';
+            div.setAttribute('data-channel', channelName);
+            div.setAttribute('data-active', channelName === 'general' ? 'true' : 'false');
+            div.innerHTML = `
+                # ${channelName}
+                <span class="notification-dot"></span>
+            `;
+            div.onclick = () => switchChannel(channelName);
+            return div;
+        }
+
+        function showNewChannelDialog() {
+            document.getElementById('newChannelDialog').style.display = 'flex';
+        }
+
+        function hideNewChannelDialog() {
+            document.getElementById('newChannelDialog').style.display = 'none';
+        }
+
+        function createChannel() {
+            const channelName = document.getElementById('newChannelName').value.trim();
+            if (channelName) {
+                socket.emit('create channel', channelName);
+                hideNewChannelDialog();
+                document.getElementById('newChannelName').value = '';
+            }
+        }
+
+        function switchChannel(channelName) {
+            const previousChannel = document.querySelector('.channel-item[data-active="true"]');
+            if (previousChannel) {
+                previousChannel.setAttribute('data-active', 'false');
+            }
+            
+            const newChannel = document.querySelector(`.channel-item[data-channel="${channelName}"]`);
+            if (newChannel) {
+                newChannel.setAttribute('data-active', 'true');
+            }
+            
+            currentChannel = channelName;
+            document.getElementById('currentChannel').textContent = channelName;
+            document.getElementById('messages').innerHTML = '';
+            socket.emit('join channel', channelName);
+            
+            if (newChannel) {
+                const notificationDot = newChannel.querySelector('.notification-dot');
+                if (notificationDot) {
+                    notificationDot.style.display = 'none';
+                }
+            }
+            unreadChannels.delete(channelName);
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('m');
+            if (messageInput.value.trim()) {
+                socket.emit('chat message', {
+                    message: messageInput.value,
+                    channel: currentChannel
+                });
+                messageInput.value = '';
+            }
+        }
+
+        document.getElementById('m').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        document.getElementById('username').addEventListener('change', (e) => {
+            const newUsername = e.target.value.trim();
+            if (newUsername) {
+                socket.emit('change username', newUsername);
+            }
+        });
+
+        socket.on('channel list', (channels) => {
+            const channelList = document.getElementById('channelList');
+            channelList.innerHTML = '';
+            channels.forEach(channel => {
+                channelList.appendChild(createChannelElement(channel));
+            });
+            if (!currentChannel) {
+                switchChannel('general');
+            }
+        });
+
+        socket.on('chat message', (data) => {
+            if (data.channel === currentChannel) {
+                const messages = document.getElementById('messages');
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                messageDiv.innerHTML = `
+                <span class="timestamp">${new Date(data.timestamp).toLocaleTimeString()}</span>
+                    <span class="username">${data.username}:</span> 
+                    <span class="message-text">${data.message}</span>
+                `;
+                messages.appendChild(messageDiv);
+                messages.scrollTop = messages.scrollHeight;
+            }
+        });
+
+        socket.on('channel history', (data) => {
+            if (data.channel === currentChannel) {
+                const messages = document.getElementById('messages');
+                messages.innerHTML = '';
+                data.messages.forEach(msg => {
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message';
+                    messageDiv.innerHTML = `
+                    <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+                        <span class="username">${msg.username}:</span> 
+                        <span class="message-text">${msg.message}</span>
+                    `;
+                    messages.appendChild(messageDiv);
+                });
+                messages.scrollTop = messages.scrollHeight;
+            }
+        });
+
+        socket.on('notification', (channel) => {
+            if (channel !== currentChannel) {
+                unreadChannels.add(channel);
+                const channelElement = document.querySelector(`[data-channel="${channel}"]`);
+                if (channelElement) {
+                    channelElement.querySelector('.notification-dot').style.display = 'block';
+                }
+            }
+        });
+
+        socket.on('user list', (users) => {
+            const usersList = document.getElementById('users');
+            usersList.innerHTML = '';
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.textContent = user;
+                usersList.appendChild(li);
+            });
+        });
+
+        socket.on('set username', (username) => {
+            currentUsername = username;
+            document.getElementById('username').value = username;
+        });
+    </script>
+</body>
+</html>
